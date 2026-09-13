@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Timer from "./components/Timer";
 import Settings from "./components/Settings";
 import Controls from "./components/Controls";
@@ -44,6 +44,25 @@ export default function Tabata() {
 
   const [countdown, setCountdown] = useState(0);
 
+  const beepRef = useRef(null);
+  const countdownSoundRef = useRef(null);
+  const startSoundRef = useRef(null);
+
+  // Create audio objects once
+  useEffect(() => {
+    beepRef.current = new Audio("/tabata/sounds/beep.mp3");
+    countdownSoundRef.current = new Audio(
+      "/tabata/sounds/countdown.mp3"
+    );
+    startSoundRef.current = new Audio(
+      "/tabata/sounds/start.mp3"
+    );
+
+    beepRef.current.preload = "auto";
+    countdownSoundRef.current.preload = "auto";
+    startSoundRef.current.preload = "auto";
+  }, []);
+
   // Save settings
   useEffect(() => {
     localStorage.setItem(
@@ -59,10 +78,12 @@ export default function Tabata() {
     }
   }, [workTime, started, finished]);
 
-  // Play sound
-  const playSound = file => {
-    const audio = new Audio(file);
+  const playSound = audioRef => {
+    const audio = audioRef.current;
 
+    if (!audio) return;
+
+    audio.pause();
     audio.currentTime = 0;
 
     audio.play().catch(() => {});
@@ -80,7 +101,7 @@ export default function Tabata() {
 
         const next = prev - 1;
 
-        playSound("/tabata/sounds/countdown.mp3");
+        playSound(countdownSoundRef);
 
         return next;
       });
@@ -98,7 +119,7 @@ export default function Tabata() {
       seconds === workTime &&
       isWorking
     ) {
-      playSound("/tabata/sounds/start.mp3");
+      playSound(startSoundRef);
     }
   }, [
     countdown,
@@ -119,8 +140,7 @@ export default function Tabata() {
           return prev - 1;
         }
 
-        // Play transition beep
-        playSound("/tabata/sounds/beep.mp3");
+        playSound(beepRef);
 
         // WORK -> REST
         if (isWorking) {
@@ -174,10 +194,10 @@ export default function Tabata() {
 
       if (countdownTime > 0) {
         setCountdown(countdownTime);
-        playSound("/tabata/sounds/countdown.mp3");
+        playSound(countdownSoundRef);
       } else {
         setCountdown(0);
-        playSound("/tabata/sounds/start.mp3");
+        playSound(startSoundRef);
       }
 
       return;
@@ -190,10 +210,10 @@ export default function Tabata() {
 
       if (countdownTime > 0) {
         setCountdown(countdownTime);
-        playSound("/tabata/sounds/countdown.mp3");
+        playSound(countdownSoundRef);
       } else {
         setCountdown(0);
-        playSound("/tabata/sounds/start.mp3");
+        playSound(startSoundRef);
       }
 
       return;

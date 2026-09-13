@@ -48,80 +48,7 @@ export default function Tabata() {
   const countdownSoundRef = useRef(null);
   const startSoundRef = useRef(null);
 
-  // --------------------------------------------------
-  // AUDIO DEBUG
-  // --------------------------------------------------
-
-  useEffect(() => {
-    const sounds = [
-      {
-        name: "BEEP",
-        ref: beepRef
-      },
-      {
-        name: "COUNTDOWN",
-        ref: countdownSoundRef
-      },
-      {
-        name: "START",
-        ref: startSoundRef
-      }
-    ];
-
-    console.log("🔊 Checking audio files...");
-
-    sounds.forEach(({ name, ref }) => {
-      const audio = ref.current;
-
-      if (!audio) {
-        console.error(`❌ ${name}: audio element not found`);
-        return;
-      }
-
-      console.log(`🔊 ${name}:`);
-      console.log("   URL:", audio.currentSrc);
-      console.log("   readyState:", audio.readyState);
-      console.log("   networkState:", audio.networkState);
-
-      audio.addEventListener("loadeddata", () => {
-        console.log(`✅ ${name} loaded`);
-        console.log(`   Duration: ${audio.duration}s`);
-      });
-
-      audio.addEventListener("canplaythrough", () => {
-        console.log(`✅ ${name} can play`);
-      });
-
-      audio.addEventListener("play", () => {
-        console.log(`▶️ ${name} PLAY`);
-      });
-
-      audio.addEventListener("ended", () => {
-        console.log(`⏹️ ${name} ENDED`);
-      });
-
-      audio.addEventListener("error", () => {
-        console.error(`❌ ${name} ERROR`);
-        console.error(audio.error);
-        console.error("URL:", audio.currentSrc);
-      });
-    });
-
-    return () => {
-      sounds.forEach(({ ref }) => {
-        const audio = ref.current;
-
-        if (audio) {
-          audio.pause();
-        }
-      });
-    };
-  }, []);
-
-  // --------------------------------------------------
-  // SAVE SETTINGS
-  // --------------------------------------------------
-
+  // Save settings
   useEffect(() => {
     localStorage.setItem(
       "tabata-settings",
@@ -129,43 +56,16 @@ export default function Tabata() {
     );
   }, [settings]);
 
-  // --------------------------------------------------
-  // UPDATE INITIAL WORK TIME
-  // --------------------------------------------------
-
+  // Update initial work time
   useEffect(() => {
     if (!started && !finished) {
       setSeconds(workTime);
     }
   }, [workTime, started, finished]);
 
-  // --------------------------------------------------
-  // COUNTDOWN
-  // --------------------------------------------------
-
+  // Countdown
   useEffect(() => {
     if (!running || countdown <= 0) return;
-
-    console.log(`⏱️ Countdown: ${countdown}`);
-
-    const audio = countdownSoundRef.current;
-
-    if (audio) {
-      audio.currentTime = 0;
-
-      audio.play()
-        .then(() => {
-          console.log(
-            `🔊 Countdown sound played: ${countdown}`
-          );
-        })
-        .catch(error => {
-          console.error(
-            `❌ Countdown sound failed:`,
-            error
-          );
-        });
-    }
 
     const interval = setInterval(() => {
       setCountdown(prev => {
@@ -173,17 +73,23 @@ export default function Tabata() {
           return 0;
         }
 
-        return prev - 1;
+        const next = prev - 1;
+
+        const audio = countdownSoundRef.current;
+
+        if (audio) {
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+        }
+
+        return next;
       });
     }, 1000);
 
     return () => clearInterval(interval);
   }, [running, countdown]);
 
-  // --------------------------------------------------
-  // START SOUND
-  // --------------------------------------------------
-
+  // Start sound when countdown finishes
   useEffect(() => {
     if (
       running &&
@@ -192,23 +98,11 @@ export default function Tabata() {
       seconds === workTime &&
       isWorking
     ) {
-      console.log("🚀 Starting WORK");
-
       const audio = startSoundRef.current;
 
       if (audio) {
         audio.currentTime = 0;
-
-        audio.play()
-          .then(() => {
-            console.log("🔊 Start sound played");
-          })
-          .catch(error => {
-            console.error(
-              "❌ Start sound failed:",
-              error
-            );
-          });
+        audio.play().catch(() => {});
       }
     }
   }, [
@@ -220,10 +114,7 @@ export default function Tabata() {
     isWorking
   ]);
 
-  // --------------------------------------------------
-  // MAIN TIMER
-  // --------------------------------------------------
-
+  // Main timer
   useEffect(() => {
     if (!running || countdown > 0) return;
 
@@ -233,39 +124,22 @@ export default function Tabata() {
           return prev - 1;
         }
 
-        console.log("🔔 Interval finished");
-
+        // Play transition beep
         const audio = beepRef.current;
 
         if (audio) {
           audio.currentTime = 0;
-
-          audio.play()
-            .then(() => {
-              console.log("🔊 Beep played");
-            })
-            .catch(error => {
-              console.error(
-                "❌ Beep failed:",
-                error
-              );
-            });
+          audio.play().catch(() => {});
         }
 
         // WORK -> REST
         if (isWorking) {
-          console.log("💤 WORK → REST");
-
           setIsWorking(false);
           return restTime;
         }
 
         // REST -> NEXT ROUND
         if (round < rounds) {
-          console.log(
-            `💪 REST → WORK, round ${round + 1}`
-          );
-
           setRound(prev => prev + 1);
           setIsWorking(true);
 
@@ -273,8 +147,6 @@ export default function Tabata() {
         }
 
         // FINISHED
-        console.log("🏁 TABATA FINISHED");
-
         setRunning(false);
         setFinished(true);
 
@@ -293,10 +165,6 @@ export default function Tabata() {
     restTime
   ]);
 
-  // --------------------------------------------------
-  // SETTINGS
-  // --------------------------------------------------
-
   const updateSetting = (key, value) => {
     setSettings(prev => ({
       ...prev,
@@ -304,22 +172,32 @@ export default function Tabata() {
     }));
   };
 
-  // --------------------------------------------------
-  // START
-  // --------------------------------------------------
+  const playSound = audioRef => {
+    const audio = audioRef.current;
+
+    if (!audio) return;
+
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  };
 
   const start = () => {
-    console.log("▶️ START button");
-
-    // Start a completely new session
+    // Start again after finished
     if (finished) {
       setRound(1);
       setSeconds(workTime);
       setIsWorking(true);
       setFinished(false);
-      setCountdown(countdownTime);
       setStarted(true);
       setRunning(true);
+
+      if (countdownTime > 0) {
+        setCountdown(countdownTime);
+        playSound(countdownSoundRef);
+      } else {
+        setCountdown(0);
+        playSound(startSoundRef);
+      }
 
       return;
     }
@@ -327,39 +205,28 @@ export default function Tabata() {
     // First start
     if (!started) {
       setStarted(true);
+      setRunning(true);
 
       if (countdownTime > 0) {
         setCountdown(countdownTime);
+        playSound(countdownSoundRef);
+      } else {
+        setCountdown(0);
+        playSound(startSoundRef);
       }
-
-      setRunning(true);
 
       return;
     }
 
     // Resume
-    console.log("▶️ RESUME");
-
     setRunning(true);
   };
 
-  // --------------------------------------------------
-  // PAUSE
-  // --------------------------------------------------
-
   const pause = () => {
-    console.log("⏸️ PAUSE");
-
     setRunning(false);
   };
 
-  // --------------------------------------------------
-  // RESET
-  // --------------------------------------------------
-
   const reset = () => {
-    console.log("🔄 RESET");
-
     setRunning(false);
     setStarted(false);
     setFinished(false);
@@ -370,14 +237,8 @@ export default function Tabata() {
     setIsWorking(true);
   };
 
-  // --------------------------------------------------
-  // RENDER
-  // --------------------------------------------------
-
   return (
     <main className={styles.container}>
-      {/* Sounds */}
-
       <audio
         ref={beepRef}
         src="/tabata/sounds/beep.mp3"

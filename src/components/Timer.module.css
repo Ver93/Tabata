@@ -1,0 +1,114 @@
+.timer {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  color: white;
+  overflow: hidden;
+}
+
+.work {
+  background: #35a853;
+}
+
+.rest {
+  background: #347fc4;
+}
+
+.finished {
+  background: #222;
+}
+
+.progress {
+  position: absolute;
+  width: min(80vw, 70vh, 520px);
+  height: min(80vw, 70vh, 520px);
+  transform: rotate(-90deg);
+}
+
+.track,
+.bar {
+  fill: none;
+  stroke-width: 5;
+}
+
+.track {
+  stroke: rgba(255, 255, 255, 0.15);
+}
+
+.bar {
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-linecap: round;
+  /* transition: stroke-dashoffset 1s linear; */
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.status {
+  font-size: clamp(12px, 3vw, 16px);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  opacity: 0.7;
+}
+
+.time {
+  margin: 8px 0;
+  font-size: clamp(80px, 24vw, 180px);
+  line-height: 0.9;
+  font-weight: 800;
+  letter-spacing: -0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.round {
+  font-size: clamp(16px, 4vw, 22px);
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.round small {
+  margin: 0 4px;
+  opacity: 0.5;
+}
+
+.countdown {
+  margin-top: 10px;
+  font-size: clamp(100px, 30vw, 220px);
+  line-height: 0.9;
+  font-weight: 800;
+  letter-spacing: -0.08em;
+  font-variant-numeric: tabular-nums;
+  animation: countdown 0.8s ease;
+}
+
+.check {
+  margin-bottom: 15px;
+  font-size: 70px;
+  line-height: 1;
+}
+
+.paused {
+  background: #777;
+}
+
+@keyframes countdown {
+  0% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

@@ -1,0 +1,89 @@
+.settings {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px 20px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.setting {
+  min-width: 0;
+  padding: 12px 8px;
+  border: 1px solid #eee;
+  border-radius: 16px;
+  background: #fafaf8;
+  text-align: center;
+}
+
+.setting > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #888;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.control button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: #eee;
+  color: #333;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.control button:hover {
+  background: #e4e4e2;
+}
+
+.control button:active {
+  transform: scale(0.9);
+}
+
+.control strong {
+  min-width: 30px;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.setting small {
+  display: block;
+  margin-top: 3px;
+  color: #aaa;
+  font-size: 10px;
+}
+
+.divider {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .settings {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .setting {
+    padding: 10px 6px;
+    border-radius: 14px;
+  }
+}

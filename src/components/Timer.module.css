@@ -6,7 +6,7 @@
   min-height: 0;
   width: 100%;
   color: white;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .work {
@@ -26,6 +26,7 @@
   width: min(80vw, 70vh, 520px);
   height: min(80vw, 70vh, 520px);
   transform: rotate(-90deg);
+  overflow: visible;
 }
 
 .track,

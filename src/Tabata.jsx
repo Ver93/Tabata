@@ -14,7 +14,8 @@ const defaults = {
 const SOUND_PATHS = {
   beep: "/tabata/sounds/beep.mp3",
   countdown: "/tabata/sounds/countdown.mp3",
-  start: "/tabata/sounds/start.mp3"
+  start: "/tabata/sounds/start.mp3",
+  ticking: "/tabata/sounds/ticking.mp3"
 };
 
 export default function Tabata() {
@@ -58,16 +59,14 @@ export default function Tabata() {
   const soundsRef = useRef({
     beep: null,
     countdown: null,
-    start: null
+    start: null,
+    ticking: null
   });
 
-  const audioLoadingRef = useRef(null);
+  const tickingSourceRef = useRef(null);
 
   /*
    * Create AudioContext once.
-   *
-   * It may start suspended because of browser autoplay
-   * restrictions. It will be resumed from the Start action.
    */
   useEffect(() => {
     const AudioContext =
@@ -81,6 +80,14 @@ export default function Tabata() {
     audioContextRef.current = new AudioContext();
 
     return () => {
+      try {
+        tickingSourceRef.current?.stop();
+      } catch {
+        // Ignore if already stopped.
+      }
+
+      tickingSourceRef.current = null;
+
       audioContextRef.current?.close();
       audioContextRef.current = null;
     };
@@ -88,8 +95,6 @@ export default function Tabata() {
 
   /*
    * Load all sounds into memory.
-   *
-   * This happens once when the app loads.
    */
   useEffect(() => {
     const loadSounds = async () => {
@@ -122,7 +127,8 @@ export default function Tabata() {
           )
         );
 
-        soundsRef.current = Object.fromEntries(entries);
+        soundsRef.current =
+          Object.fromEntries(entries);
       } catch {
         /*
          * Audio loading failure should never break
@@ -152,7 +158,7 @@ export default function Tabata() {
   };
 
   /*
-   * Play an already-loaded sound buffer.
+   * Play a normal one-shot sound.
    */
   const playSound = name => {
     const context = audioContextRef.current;
@@ -161,7 +167,8 @@ export default function Tabata() {
     if (!context || !buffer) return;
 
     try {
-      const source = context.createBufferSource();
+      const source =
+        context.createBufferSource();
 
       source.buffer = buffer;
       source.connect(context.destination);
@@ -170,6 +177,63 @@ export default function Tabata() {
     } catch {
       // Ignore audio playback errors.
     }
+  };
+
+  /*
+   * Start ticking.mp3 and loop it continuously.
+   */
+  const startTicking = () => {
+    const context = audioContextRef.current;
+    const buffer = soundsRef.current.ticking;
+
+    if (!context || !buffer) return;
+
+    /*
+     * Prevent multiple ticking sources from
+     * playing at the same time.
+     */
+    if (tickingSourceRef.current) {
+      return;
+    }
+
+    try {
+      const source =
+        context.createBufferSource();
+
+      source.buffer = buffer;
+      source.loop = true;
+
+      source.connect(context.destination);
+
+      source.start(0);
+
+      tickingSourceRef.current = source;
+    } catch {
+      // Ignore audio playback errors.
+    }
+  };
+
+  /*
+   * Stop ticking.mp3.
+   */
+  const stopTicking = () => {
+    const source = tickingSourceRef.current;
+
+    if (!source) return;
+
+    try {
+      source.stop();
+    } catch {
+      // Ignore if already stopped.
+    }
+
+    try {
+      source.disconnect();
+    } catch {
+      // Ignore disconnect errors.
+    }
+
+    tickingSourceRef.current = null;
   };
 
   // --------------------------------------------------
@@ -211,9 +275,6 @@ export default function Tabata() {
   const phaseRef = useRef("work");
   const roundRef = useRef(1);
 
-  /*
-   * Prevent duplicate countdown sounds.
-   */
   const lastCountdownValueRef = useRef(null);
 
   useEffect(() => {
@@ -228,9 +289,6 @@ export default function Tabata() {
 
   /*
    * Main timer loop.
-   *
-   * performance.now() is the actual clock.
-   * requestAnimationFrame only updates the UI.
    */
   useEffect(() => {
     if (!running) {
@@ -291,6 +349,11 @@ export default function Tabata() {
           pausedRemainingRef.current = null;
 
           playSound("start");
+
+          /*
+           * Start ticking when actual WORK starts.
+           */
+          startTicking();
         }
       }
 
@@ -306,12 +369,6 @@ export default function Tabata() {
         let remainingMs =
           phaseEnd - now;
 
-        /*
-         * Handle transitions immediately.
-         *
-         * The while-loop is important if the browser
-         * was temporarily suspended or delayed.
-         */
         while (remainingMs <= 0) {
           // ------------------------------------------
           // WORK -> REST
@@ -365,6 +422,8 @@ export default function Tabata() {
           // ------------------------------------------
 
           playSound("beep");
+
+          stopTicking();
 
           phaseEndRef.current = null;
           pausedRemainingRef.current = null;
@@ -420,10 +479,6 @@ export default function Tabata() {
   // --------------------------------------------------
 
   const start = async () => {
-    /*
-     * Unlock the Web Audio API using the user's
-     * Start button as the required user gesture.
-     */
     await unlockAudio();
 
     // ----------------------------------------------
@@ -466,6 +521,11 @@ export default function Tabata() {
         setCountdown(0);
 
         playSound("start");
+
+        /*
+         * No countdown, so start ticking immediately.
+         */
+        startTicking();
       }
 
       return;
@@ -510,6 +570,11 @@ export default function Tabata() {
         setCountdown(0);
 
         playSound("start");
+
+        /*
+         * No countdown, so start ticking immediately.
+         */
+        startTicking();
       }
 
       return;
@@ -546,6 +611,12 @@ export default function Tabata() {
 
       pausedRemainingRef.current = null;
 
+      /*
+       * Restart ticking from the beginning of the
+       * audio file when the timer is resumed.
+       */
+      startTicking();
+
       setRunning(true);
 
       return;
@@ -558,6 +629,8 @@ export default function Tabata() {
     phaseEndRef.current =
       performance.now() +
       seconds * 1000;
+
+    startTicking();
 
     setRunning(true);
   };
@@ -583,6 +656,8 @@ export default function Tabata() {
 
       countdownEndRef.current = null;
 
+      stopTicking();
+
       setRunning(false);
 
       return;
@@ -600,6 +675,8 @@ export default function Tabata() {
 
       phaseEndRef.current = null;
 
+      stopTicking();
+
       setRunning(false);
     }
   };
@@ -616,6 +693,8 @@ export default function Tabata() {
 
       animationFrameRef.current = null;
     }
+
+    stopTicking();
 
     phaseEndRef.current = null;
     countdownEndRef.current = null;

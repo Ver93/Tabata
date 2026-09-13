@@ -9,24 +9,31 @@ export default function Timer({
   isWorking,
   finished,
   countdown,
-  running
+  running,
+  started
 }) {
   const total = isWorking ? workTime : restTime;
 
   const progress =
     total > 0
-      ? (total - seconds) / total
+      ? Math.min(1, Math.max(0, (total - seconds) / total))
       : 0;
 
   const circumference = 2 * Math.PI * 130;
   const offset = circumference * (1 - progress);
+
+  const isPaused =
+    started &&
+    !running &&
+    !finished &&
+    countdown === 0;
 
   return (
     <section
       className={`${styles.timer} ${
         finished
           ? styles.finished
-          : !running
+          : isPaused
             ? styles.paused
             : isWorking
               ? styles.work
@@ -82,7 +89,7 @@ export default function Timer({
               Great job!
             </strong>
           </>
-        ) : !running ? (
+        ) : isPaused ? (
           <>
             <span className={styles.status}>
               PAUSED

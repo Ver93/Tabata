@@ -41,17 +41,16 @@ export default function Tabata() {
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(false);
   const [finished, setFinished] = useState(false);
-
   const [countdown, setCountdown] = useState(0);
+
+  // --------------------------------------------------
+  // Audio
+  // --------------------------------------------------
 
   const beepRef = useRef(null);
   const countdownSoundRef = useRef(null);
   const startSoundRef = useRef(null);
 
-  const timerStartRef = useRef(null);
-  const countdownStartRef = useRef(null);
-
-  // Create audio objects once
   useEffect(() => {
     beepRef.current = new Audio("/tabata/sounds/beep.mp3");
     countdownSoundRef.current = new Audio(
@@ -64,22 +63,13 @@ export default function Tabata() {
     beepRef.current.preload = "auto";
     countdownSoundRef.current.preload = "auto";
     startSoundRef.current.preload = "auto";
+
+    return () => {
+      beepRef.current?.pause();
+      countdownSoundRef.current?.pause();
+      startSoundRef.current?.pause();
+    };
   }, []);
-
-  // Save settings
-  useEffect(() => {
-    localStorage.setItem(
-      "tabata-settings",
-      JSON.stringify(settings)
-    );
-  }, [settings]);
-
-  // Update initial work time
-  useEffect(() => {
-    if (!started && !finished) {
-      setSeconds(workTime);
-    }
-  }, [workTime, started, finished]);
 
   const playSound = audioRef => {
     const audio = audioRef.current;
@@ -92,141 +82,22 @@ export default function Tabata() {
     audio.play().catch(() => {});
   };
 
-  /*
-   * Countdown
-   *
-   * Uses Date.now() instead of assuming that every
-   * setInterval tick is exactly one second.
-   */
+  // --------------------------------------------------
+  // Settings
+  // --------------------------------------------------
+
   useEffect(() => {
-    if (!running || countdown <= 0) return;
+    localStorage.setItem(
+      "tabata-settings",
+      JSON.stringify(settings)
+    );
+  }, [settings]);
 
-    if (!countdownStartRef.current) {
-      countdownStartRef.current =
-        Date.now() - (countdownTime - countdown) * 1000;
-    }
-
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - countdownStartRef.current;
-      const remaining = Math.max(
-        0,
-        countdownTime - Math.floor(elapsed / 1000)
-      );
-
-      setCountdown(prev => {
-        if (remaining < prev && remaining > 0) {
-          playSound(countdownSoundRef);
-        }
-
-        return remaining;
-      });
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-        countdownStartRef.current = null;
-      }
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [running, countdownTime]);
-
-  /*
-   * Start sound when countdown finishes.
-   */
   useEffect(() => {
-    if (
-      running &&
-      started &&
-      countdown === 0 &&
-      seconds === workTime &&
-      isWorking &&
-      !timerStartRef.current
-    ) {
-      playSound(startSoundRef);
-
-      timerStartRef.current = Date.now();
+    if (!started && !finished) {
+      setSeconds(workTime);
     }
-  }, [
-    countdown,
-    running,
-    started,
-    seconds,
-    workTime,
-    isWorking
-  ]);
-
-  /*
-   * Main timer
-   *
-   * Date.now() is the actual clock.
-   * setInterval only updates the UI frequently.
-   */
-  useEffect(() => {
-    if (!running || countdown > 0) return;
-
-    if (!timerStartRef.current) {
-      timerStartRef.current =
-        Date.now() - (getCurrentDuration() - seconds) * 1000;
-    }
-
-    const interval = setInterval(() => {
-      const duration = getCurrentDuration();
-
-      const elapsed =
-        (Date.now() - timerStartRef.current) / 1000;
-
-      const remaining = Math.max(
-        0,
-        duration - Math.floor(elapsed)
-      );
-
-      setSeconds(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-
-        playSound(beepRef);
-
-        // WORK -> REST
-        if (isWorking) {
-          setIsWorking(false);
-          setSeconds(restTime);
-          timerStartRef.current = Date.now();
-          return;
-        }
-
-        // REST -> NEXT ROUND
-        if (round < rounds) {
-          setRound(prev => prev + 1);
-          setIsWorking(true);
-          setSeconds(workTime);
-          timerStartRef.current = Date.now();
-          return;
-        }
-
-        // FINISHED
-        setRunning(false);
-        setFinished(true);
-        setSeconds(0);
-        timerStartRef.current = null;
-      }
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [
-    running,
-    countdown,
-    isWorking,
-    round,
-    rounds,
-    workTime,
-    restTime,
-    seconds
-  ]);
-
-  const getCurrentDuration = () => {
-    return isWorking ? workTime : restTime;
-  };
+  }, [workTime, started, finished]);
 
   const updateSetting = (key, value) => {
     setSettings(prev => ({
@@ -235,71 +106,408 @@ export default function Tabata() {
     }));
   };
 
+  // --------------------------------------------------
+  // Timer engine
+  // --------------------------------------------------
+
+  const animationFrameRef = useRef(null);
+
+  const phaseEndRef = useRef(null);
+  const countdownEndRef = useRef(null);
+
+  const pausedRemainingRef = useRef(null);
+  const pausedCountdownRef = useRef(null);
+
+  const phaseRef = useRef("work");
+  const roundRef = useRef(1);
+
+  const lastCountdownValueRef = useRef(null);
+
+  // Keep refs synchronized with React state.
+  useEffect(() => {
+    phaseRef.current = isWorking ? "work" : "rest";
+  }, [isWorking]);
+
+  useEffect(() => {
+    roundRef.current = round;
+  }, [round]);
+
+  const getDuration = () => {
+    return phaseRef.current === "work"
+      ? workTime
+      : restTime;
+  };
+
+  // --------------------------------------------------
+  // Main timer loop
+  // --------------------------------------------------
+
+  useEffect(() => {
+    if (!running) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+
+      return;
+    }
+
+    const update = () => {
+      const now = performance.now();
+
+      // ----------------------------------------------
+      // COUNTDOWN
+      // ----------------------------------------------
+
+      if (countdownEndRef.current !== null) {
+        const remainingMs =
+          countdownEndRef.current - now;
+
+        const remainingSeconds = Math.max(
+          0,
+          Math.ceil(remainingMs / 1000)
+        );
+
+        setCountdown(prev => {
+          if (
+            remainingSeconds < prev &&
+            remainingSeconds > 0
+          ) {
+            playSound(countdownSoundRef);
+          }
+
+          return remainingSeconds;
+        });
+
+        if (remainingMs <= 0) {
+          countdownEndRef.current = null;
+          lastCountdownValueRef.current = null;
+
+          setCountdown(0);
+
+          // Start actual WORK immediately.
+          phaseRef.current = "work";
+          roundRef.current = 1;
+
+          setIsWorking(true);
+          setRound(1);
+
+          phaseEndRef.current =
+            performance.now() + workTime * 1000;
+
+          pausedRemainingRef.current = null;
+
+          playSound(startSoundRef);
+        }
+      }
+
+      // ----------------------------------------------
+      // WORK / REST
+      // ----------------------------------------------
+
+      else if (phaseEndRef.current !== null) {
+        let phaseEnd = phaseEndRef.current;
+        let currentPhase = phaseRef.current;
+        let currentRound = roundRef.current;
+
+        let remainingMs = phaseEnd - now;
+
+        // Handle phase transitions.
+        while (remainingMs <= 0) {
+          // ------------------------------------------
+          // WORK -> REST
+          // ------------------------------------------
+
+          if (currentPhase === "work") {
+            playSound(beepRef);
+
+            currentPhase = "rest";
+
+            setIsWorking(false);
+
+            phaseEnd += restTime * 1000;
+
+            remainingMs = phaseEnd - now;
+
+            phaseEndRef.current = phaseEnd;
+            phaseRef.current = currentPhase;
+
+            continue;
+          }
+
+          // ------------------------------------------
+          // REST -> NEXT ROUND
+          // ------------------------------------------
+
+          if (currentRound < rounds) {
+            playSound(beepRef);
+
+            currentRound += 1;
+            currentPhase = "work";
+
+            setRound(currentRound);
+            setIsWorking(true);
+
+            phaseEnd += workTime * 1000;
+
+            remainingMs = phaseEnd - now;
+
+            phaseEndRef.current = phaseEnd;
+            phaseRef.current = currentPhase;
+            roundRef.current = currentRound;
+
+            continue;
+          }
+
+          // ------------------------------------------
+          // FINISHED
+          // ------------------------------------------
+
+          playSound(beepRef);
+
+          phaseEndRef.current = null;
+          pausedRemainingRef.current = null;
+
+          setSeconds(0);
+          setRunning(false);
+          setFinished(true);
+
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(
+              animationFrameRef.current
+            );
+
+            animationFrameRef.current = null;
+          }
+
+          return;
+        }
+
+        const remainingSeconds = Math.max(
+          0,
+          Math.ceil(remainingMs / 1000)
+        );
+
+        setSeconds(remainingSeconds);
+      }
+
+      animationFrameRef.current =
+        requestAnimationFrame(update);
+    };
+
+    animationFrameRef.current =
+      requestAnimationFrame(update);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(
+          animationFrameRef.current
+        );
+
+        animationFrameRef.current = null;
+      }
+    };
+  }, [
+    running,
+    workTime,
+    restTime,
+    rounds
+  ]);
+
+  // --------------------------------------------------
+  // Start / Resume
+  // --------------------------------------------------
+
   const start = () => {
-    // Start again after finished
+    // ----------------------------------------------
+    // START AGAIN AFTER FINISH
+    // ----------------------------------------------
+
     if (finished) {
+      phaseRef.current = "work";
+      roundRef.current = 1;
+
       setRound(1);
       setSeconds(workTime);
       setIsWorking(true);
+
       setFinished(false);
       setStarted(true);
       setRunning(true);
 
-      timerStartRef.current = null;
+      pausedRemainingRef.current = null;
+      pausedCountdownRef.current = null;
 
       if (countdownTime > 0) {
+        countdownEndRef.current =
+          performance.now() +
+          countdownTime * 1000;
+
+        lastCountdownValueRef.current =
+          countdownTime;
+
         setCountdown(countdownTime);
-        countdownStartRef.current = Date.now();
+
         playSound(countdownSoundRef);
       } else {
+        countdownEndRef.current = null;
+
+        phaseEndRef.current =
+          performance.now() +
+          workTime * 1000;
+
         setCountdown(0);
+
         playSound(startSoundRef);
-        timerStartRef.current = Date.now();
       }
 
       return;
     }
 
-    // First start
+    // ----------------------------------------------
+    // FIRST START
+    // ----------------------------------------------
+
     if (!started) {
+      phaseRef.current = "work";
+      roundRef.current = 1;
+
       setStarted(true);
       setRunning(true);
 
-      timerStartRef.current = null;
+      setRound(1);
+      setIsWorking(true);
+      setSeconds(workTime);
+
+      pausedRemainingRef.current = null;
+      pausedCountdownRef.current = null;
 
       if (countdownTime > 0) {
+        countdownEndRef.current =
+          performance.now() +
+          countdownTime * 1000;
+
+        lastCountdownValueRef.current =
+          countdownTime;
+
         setCountdown(countdownTime);
-        countdownStartRef.current = Date.now();
+
         playSound(countdownSoundRef);
       } else {
+        countdownEndRef.current = null;
+
+        phaseEndRef.current =
+          performance.now() +
+          workTime * 1000;
+
         setCountdown(0);
+
         playSound(startSoundRef);
-        timerStartRef.current = Date.now();
       }
 
       return;
     }
 
-    // Resume
-    setRunning(true);
+    // ----------------------------------------------
+    // RESUME FROM PAUSE
+    // ----------------------------------------------
 
-    timerStartRef.current =
-      Date.now() -
-      (getCurrentDuration() - seconds) * 1000;
+    if (pausedCountdownRef.current !== null) {
+      const remaining =
+        pausedCountdownRef.current;
+
+      countdownEndRef.current =
+        performance.now() + remaining;
+
+      pausedCountdownRef.current = null;
+
+      setRunning(true);
+
+      return;
+    }
+
+    if (pausedRemainingRef.current !== null) {
+      const remaining =
+        pausedRemainingRef.current;
+
+      phaseEndRef.current =
+        performance.now() + remaining;
+
+      pausedRemainingRef.current = null;
+
+      setRunning(true);
+
+      return;
+    }
+
+    // Fallback.
+    phaseEndRef.current =
+      performance.now() +
+      seconds * 1000;
+
+    setRunning(true);
   };
+
+  // --------------------------------------------------
+  // Pause
+  // --------------------------------------------------
 
   const pause = () => {
-    setRunning(false);
+    if (!running) return;
 
-    /*
-     * Clear timing references so resume starts
-     * from the exact displayed second.
-     */
-    timerStartRef.current = null;
-    countdownStartRef.current = null;
+    const now = performance.now();
+
+    // Pause countdown.
+    if (countdownEndRef.current !== null) {
+      pausedCountdownRef.current = Math.max(
+        0,
+        countdownEndRef.current - now
+      );
+
+      countdownEndRef.current = null;
+
+      setRunning(false);
+
+      return;
+    }
+
+    // Pause work/rest.
+    if (phaseEndRef.current !== null) {
+      pausedRemainingRef.current = Math.max(
+        0,
+        phaseEndRef.current - now
+      );
+
+      phaseEndRef.current = null;
+
+      setRunning(false);
+    }
   };
 
+  // --------------------------------------------------
+  // Reset
+  // --------------------------------------------------
+
   const reset = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(
+        animationFrameRef.current
+      );
+
+      animationFrameRef.current = null;
+    }
+
+    phaseEndRef.current = null;
+    countdownEndRef.current = null;
+
+    pausedRemainingRef.current = null;
+    pausedCountdownRef.current = null;
+
+    lastCountdownValueRef.current = null;
+
+    phaseRef.current = "work";
+    roundRef.current = 1;
+
     setRunning(false);
     setStarted(false);
     setFinished(false);
@@ -308,10 +516,11 @@ export default function Tabata() {
     setRound(1);
     setSeconds(workTime);
     setIsWorking(true);
-
-    timerStartRef.current = null;
-    countdownStartRef.current = null;
   };
+
+  // --------------------------------------------------
+  // Render
+  // --------------------------------------------------
 
   return (
     <main className={styles.container}>
@@ -331,6 +540,7 @@ export default function Tabata() {
           finished={finished}
           countdown={countdown}
           running={running}
+          started={started}
         />
 
         {!started && !finished && (
@@ -349,7 +559,10 @@ export default function Tabata() {
               updateSetting("rounds", value)
             }
             setCountdownTime={value =>
-              updateSetting("countdownTime", value)
+              updateSetting(
+                "countdownTime",
+                value
+              )
             }
             disabled={false}
           />

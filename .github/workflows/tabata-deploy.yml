@@ -4,9 +4,14 @@ on:
   push:
     branches: ["master"]
 
+concurrency:
+  group: deploy-tabata
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -50,6 +55,5 @@ jobs:
           script: |
             tar -xzf /var/www/portfolio/tabata/tabata-build.tar.gz -C /var/www/portfolio/tabata/dist
             rm /var/www/portfolio/tabata/tabata-build.tar.gz
-
             nginx -t
             systemctl reload nginx

@@ -15,7 +15,8 @@ const SOUND_PATHS = {
   beep: "/tabata/sounds/beep.mp3",
   countdown: "/tabata/sounds/countdown.mp3",
   start: "/tabata/sounds/start.mp3",
-  ticking: "/tabata/sounds/ticking.mp3"
+  ticking: "/tabata/sounds/ticking.mp3",
+  finish: "/tabata/sounds/finish.mp3"
 };
 
 export default function Tabata() {
@@ -60,7 +61,8 @@ export default function Tabata() {
     beep: null,
     countdown: null,
     start: null,
-    ticking: null
+    ticking: null,
+    finish: null
   });
 
   const tickingSourceRef = useRef(null);
@@ -129,11 +131,11 @@ export default function Tabata() {
 
         soundsRef.current =
           Object.fromEntries(entries);
-      } catch {
-        /*
-         * Audio loading failure should never break
-         * the timer itself.
-         */
+      } catch (error) {
+        console.error(
+          "Failed to load timer sounds:",
+          error
+        );
       }
     };
 
@@ -158,7 +160,7 @@ export default function Tabata() {
   };
 
   /*
-   * Play a normal one-shot sound.
+   * Play a one-shot sound.
    */
   const playSound = name => {
     const context = audioContextRef.current;
@@ -180,7 +182,9 @@ export default function Tabata() {
   };
 
   /*
-   * Start ticking.mp3 and loop it continuously.
+   * Start ticking.mp3.
+   *
+   * Ticking is ONLY used during WORK.
    */
   const startTicking = () => {
     const context = audioContextRef.current;
@@ -188,10 +192,6 @@ export default function Tabata() {
 
     if (!context || !buffer) return;
 
-    /*
-     * Prevent multiple ticking sources from
-     * playing at the same time.
-     */
     if (tickingSourceRef.current) {
       return;
     }
@@ -275,8 +275,6 @@ export default function Tabata() {
   const phaseRef = useRef("work");
   const roundRef = useRef(1);
 
-  const lastCountdownValueRef = useRef(null);
-
   useEffect(() => {
     phaseRef.current = isWorking
       ? "work"
@@ -332,7 +330,6 @@ export default function Tabata() {
 
         if (remainingMs <= 0) {
           countdownEndRef.current = null;
-          lastCountdownValueRef.current = null;
 
           setCountdown(0);
 
@@ -341,6 +338,7 @@ export default function Tabata() {
 
           setIsWorking(true);
           setRound(1);
+          setSeconds(workTime);
 
           phaseEndRef.current =
             performance.now() +
@@ -348,11 +346,8 @@ export default function Tabata() {
 
           pausedRemainingRef.current = null;
 
+          // WORK starts
           playSound("start");
-
-          /*
-           * Start ticking when actual WORK starts.
-           */
           startTicking();
         }
       }
@@ -375,6 +370,8 @@ export default function Tabata() {
           // ------------------------------------------
 
           if (currentPhase === "work") {
+            stopTicking();
+
             playSound("beep");
 
             currentPhase = "rest";
@@ -411,6 +408,11 @@ export default function Tabata() {
             phaseRef.current = currentPhase;
             roundRef.current = currentRound;
 
+            setSeconds(workTime);
+
+            // New WORK starts
+            startTicking();
+
             remainingMs =
               phaseEnd - now;
 
@@ -421,8 +423,6 @@ export default function Tabata() {
           // FINISHED
           // ------------------------------------------
 
-          playSound("beep");
-
           stopTicking();
 
           phaseEndRef.current = null;
@@ -431,6 +431,14 @@ export default function Tabata() {
           setSeconds(0);
           setRunning(false);
           setFinished(true);
+
+          /*
+           * Play the dedicated FINISH sound once.
+           *
+           * This is deliberately different from
+           * the normal phase-change beep.
+           */
+          playSound("finish");
 
           if (animationFrameRef.current) {
             cancelAnimationFrame(
@@ -486,6 +494,8 @@ export default function Tabata() {
     // ----------------------------------------------
 
     if (finished) {
+      stopTicking();
+
       phaseRef.current = "work";
       roundRef.current = 1;
 
@@ -505,9 +515,6 @@ export default function Tabata() {
           performance.now() +
           countdownTime * 1000;
 
-        lastCountdownValueRef.current =
-          countdownTime;
-
         setCountdown(countdownTime);
 
         playSound("countdown");
@@ -521,10 +528,6 @@ export default function Tabata() {
         setCountdown(0);
 
         playSound("start");
-
-        /*
-         * No countdown, so start ticking immediately.
-         */
         startTicking();
       }
 
@@ -536,6 +539,8 @@ export default function Tabata() {
     // ----------------------------------------------
 
     if (!started) {
+      stopTicking();
+
       phaseRef.current = "work";
       roundRef.current = 1;
 
@@ -554,9 +559,6 @@ export default function Tabata() {
           performance.now() +
           countdownTime * 1000;
 
-        lastCountdownValueRef.current =
-          countdownTime;
-
         setCountdown(countdownTime);
 
         playSound("countdown");
@@ -570,10 +572,6 @@ export default function Tabata() {
         setCountdown(0);
 
         playSound("start");
-
-        /*
-         * No countdown, so start ticking immediately.
-         */
         startTicking();
       }
 
@@ -593,6 +591,8 @@ export default function Tabata() {
 
       pausedCountdownRef.current = null;
 
+      stopTicking();
+
       setRunning(true);
 
       return;
@@ -611,11 +611,11 @@ export default function Tabata() {
 
       pausedRemainingRef.current = null;
 
-      /*
-       * Restart ticking from the beginning of the
-       * audio file when the timer is resumed.
-       */
-      startTicking();
+      if (phaseRef.current === "work") {
+        startTicking();
+      } else {
+        stopTicking();
+      }
 
       setRunning(true);
 
@@ -630,7 +630,11 @@ export default function Tabata() {
       performance.now() +
       seconds * 1000;
 
-    startTicking();
+    if (phaseRef.current === "work") {
+      startTicking();
+    } else {
+      stopTicking();
+    }
 
     setRunning(true);
   };
@@ -702,8 +706,6 @@ export default function Tabata() {
     pausedRemainingRef.current = null;
     pausedCountdownRef.current = null;
 
-    lastCountdownValueRef.current = null;
-
     phaseRef.current = "work";
     roundRef.current = 1;
 
@@ -716,16 +718,11 @@ export default function Tabata() {
     setSeconds(workTime);
     setIsWorking(true);
   };
-
-  // --------------------------------------------------
-  // RENDER
-  // --------------------------------------------------
-
+  
   return (
     <main className={styles.container}>
       <header className={styles.header}>
         <h1>Tabata</h1>
-        <span>Interval Timer</span>
       </header>
 
       <div className={styles.app}>

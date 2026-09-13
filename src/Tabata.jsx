@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Timer from "./components/Timer";
 import Settings from "./components/Settings";
 import Controls from "./components/Controls";
@@ -44,10 +44,6 @@ export default function Tabata() {
 
   const [countdown, setCountdown] = useState(0);
 
-  const beepRef = useRef(null);
-  const countdownSoundRef = useRef(null);
-  const startSoundRef = useRef(null);
-
   // Save settings
   useEffect(() => {
     localStorage.setItem(
@@ -63,6 +59,15 @@ export default function Tabata() {
     }
   }, [workTime, started, finished]);
 
+  // Play sound
+  const playSound = file => {
+    const audio = new Audio(file);
+
+    audio.currentTime = 0;
+
+    audio.play().catch(() => {});
+  };
+
   // Countdown
   useEffect(() => {
     if (!running || countdown <= 0) return;
@@ -75,12 +80,7 @@ export default function Tabata() {
 
         const next = prev - 1;
 
-        const audio = countdownSoundRef.current;
-
-        if (audio) {
-          audio.currentTime = 0;
-          audio.play().catch(() => {});
-        }
+        playSound("/tabata/sounds/countdown.mp3");
 
         return next;
       });
@@ -98,12 +98,7 @@ export default function Tabata() {
       seconds === workTime &&
       isWorking
     ) {
-      const audio = startSoundRef.current;
-
-      if (audio) {
-        audio.currentTime = 0;
-        audio.play().catch(() => {});
-      }
+      playSound("/tabata/sounds/start.mp3");
     }
   }, [
     countdown,
@@ -125,12 +120,7 @@ export default function Tabata() {
         }
 
         // Play transition beep
-        const audio = beepRef.current;
-
-        if (audio) {
-          audio.currentTime = 0;
-          audio.play().catch(() => {});
-        }
+        playSound("/tabata/sounds/beep.mp3");
 
         // WORK -> REST
         if (isWorking) {
@@ -172,15 +162,6 @@ export default function Tabata() {
     }));
   };
 
-  const playSound = audioRef => {
-    const audio = audioRef.current;
-
-    if (!audio) return;
-
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-  };
-
   const start = () => {
     // Start again after finished
     if (finished) {
@@ -193,10 +174,10 @@ export default function Tabata() {
 
       if (countdownTime > 0) {
         setCountdown(countdownTime);
-        playSound(countdownSoundRef);
+        playSound("/tabata/sounds/countdown.mp3");
       } else {
         setCountdown(0);
-        playSound(startSoundRef);
+        playSound("/tabata/sounds/start.mp3");
       }
 
       return;
@@ -209,10 +190,10 @@ export default function Tabata() {
 
       if (countdownTime > 0) {
         setCountdown(countdownTime);
-        playSound(countdownSoundRef);
+        playSound("/tabata/sounds/countdown.mp3");
       } else {
         setCountdown(0);
-        playSound(startSoundRef);
+        playSound("/tabata/sounds/start.mp3");
       }
 
       return;
@@ -239,24 +220,6 @@ export default function Tabata() {
 
   return (
     <main className={styles.container}>
-      <audio
-        ref={beepRef}
-        src="/tabata/sounds/beep.mp3"
-        preload="auto"
-      />
-
-      <audio
-        ref={countdownSoundRef}
-        src="/tabata/sounds/countdown.mp3"
-        preload="auto"
-      />
-
-      <audio
-        ref={startSoundRef}
-        src="/tabata/sounds/start.mp3"
-        preload="auto"
-      />
-
       <header className={styles.header}>
         <h1>Tabata</h1>
         <span>Interval Timer</span>

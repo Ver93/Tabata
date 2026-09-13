@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import Timer from "./components/Timer";
 import Settings from "./components/Settings";
@@ -26,34 +27,35 @@ export default function Tabata() {
     if (!saved) return defaults;
 
     try {
-      return {
-        ...defaults,
-        ...JSON.parse(saved)
-      };
+      return { ...defaults, ...JSON.parse(saved) };
     } catch {
       return defaults;
     }
   });
 
-  const {
-    workTime,
-    restTime,
-    rounds,
-    countdownTime
-  } = settings;
+  const { workTime, restTime, rounds, countdownTime } = settings;
 
   const [seconds, setSeconds] = useState(workTime);
   const [round, setRound] = useState(1);
   const [isWorking, setIsWorking] = useState(true);
-
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(false);
   const [finished, setFinished] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
-  // --------------------------------------------------
+  // AUDIO SETTINGS
+
+  const [timerSoundEnabled, setTimerSoundEnabled] = useState(() => {
+    const saved = localStorage.getItem("tabata-timer-sound");
+    return saved === null ? true : saved === "true";
+  });
+
+  const [generalSoundEnabled, setGeneralSoundEnabled] = useState(() => {
+    const saved = localStorage.getItem("tabata-general-sound");
+    return saved === null ? true : saved === "true";
+  });
+
   // AUDIO
-  // --------------------------------------------------
 
   const audioContextRef = useRef(null);
 
@@ -69,12 +71,9 @@ export default function Tabata() {
 
   useEffect(() => {
     const AudioContext =
-      window.AudioContext ||
-      window.webkitAudioContext;
+      window.AudioContext || window.webkitAudioContext;
 
-    if (!AudioContext) {
-      return;
-    }
+    if (!AudioContext) return;
 
     audioContextRef.current = new AudioContext();
 
@@ -105,9 +104,7 @@ export default function Tabata() {
               const response = await fetch(path);
 
               if (!response.ok) {
-                throw new Error(
-                  `Failed to load ${path}`
-                );
+                throw new Error(`Failed to load ${path}`);
               }
 
               const arrayBuffer =
@@ -156,31 +153,46 @@ export default function Tabata() {
 
     if (!context || !buffer) return;
 
+    // General sound is the master mute.
+    if (!generalSoundEnabled) return;
+
+    // Timer sound only controls ticking.mp3.
+    if (
+      name === "ticking" &&
+      !timerSoundEnabled
+    ) {
+      return;
+    }
+
     try {
       const source =
         context.createBufferSource();
 
       source.buffer = buffer;
       source.connect(context.destination);
-
       source.start(0);
     } catch {
       // Ignore audio playback errors.
     }
   };
 
-  /*
-   * Start ticking.mp3.
-   *
-   * Ticking is ONLY used during WORK.
-   */
   const startTicking = () => {
+    // Both settings must be enabled.
+    if (
+      !generalSoundEnabled ||
+      !timerSoundEnabled
+    ) {
+      return;
+    }
+
     const context = audioContextRef.current;
     const buffer = soundsRef.current.ticking;
 
-    if (!context || !buffer) return;
-
-    if (tickingSourceRef.current) {
+    if (
+      !context ||
+      !buffer ||
+      tickingSourceRef.current
+    ) {
       return;
     }
 
@@ -192,7 +204,6 @@ export default function Tabata() {
       source.loop = true;
 
       source.connect(context.destination);
-
       source.start(0);
 
       tickingSourceRef.current = source;
@@ -202,7 +213,8 @@ export default function Tabata() {
   };
 
   const stopTicking = () => {
-    const source = tickingSourceRef.current;
+    const source =
+      tickingSourceRef.current;
 
     if (!source) return;
 
@@ -221,9 +233,72 @@ export default function Tabata() {
     tickingSourceRef.current = null;
   };
 
-  // --------------------------------------------------
+  // AUDIO TOGGLES
+
+  const toggleTimerSound = async () => {
+    await unlockAudio();
+
+    setTimerSoundEnabled(prev => {
+      const next = !prev;
+
+      localStorage.setItem(
+        "tabata-timer-sound",
+        String(next)
+      );
+
+      return next;
+    });
+  };
+
+  const toggleGeneralSound = async () => {
+    await unlockAudio();
+
+    setGeneralSoundEnabled(prev => {
+      const next = !prev;
+
+      localStorage.setItem(
+        "tabata-general-sound",
+        String(next)
+      );
+
+      // General OFF = immediately stop ticking.
+      if (!next) {
+        stopTicking();
+      }
+
+      return next;
+    });
+  };
+
+  // Keep ticking in sync with sound settings.
+
+  useEffect(() => {
+    if (
+      !generalSoundEnabled ||
+      !timerSoundEnabled
+    ) {
+      stopTicking();
+      return;
+    }
+
+    if (
+      running &&
+      isWorking &&
+      countdown === 0 &&
+      !finished
+    ) {
+      startTicking();
+    }
+  }, [
+    generalSoundEnabled,
+    timerSoundEnabled,
+    running,
+    isWorking,
+    countdown,
+    finished
+  ]);
+
   // SETTINGS
-  // --------------------------------------------------
 
   useEffect(() => {
     localStorage.setItem(
@@ -245,12 +320,9 @@ export default function Tabata() {
     }));
   };
 
-  // --------------------------------------------------
   // TIMER ENGINE
-  // --------------------------------------------------
 
   const animationFrameRef = useRef(null);
-
   const phaseEndRef = useRef(null);
   const countdownEndRef = useRef(null);
 
@@ -261,9 +333,8 @@ export default function Tabata() {
   const roundRef = useRef(1);
 
   useEffect(() => {
-    phaseRef.current = isWorking
-      ? "work"
-      : "rest";
+    phaseRef.current =
+      isWorking ? "work" : "rest";
   }, [isWorking]);
 
   useEffect(() => {
@@ -286,17 +357,19 @@ export default function Tabata() {
     const update = () => {
       const now = performance.now();
 
-      // ----------------------------------------------
       // INITIAL COUNTDOWN
-      // ----------------------------------------------
 
-      if (countdownEndRef.current !== null) {
+      if (
+        countdownEndRef.current !== null
+      ) {
         const remainingMs =
           countdownEndRef.current - now;
 
         const remainingSeconds = Math.max(
           0,
-          Math.ceil(remainingMs / 1000)
+          Math.ceil(
+            remainingMs / 1000
+          )
         );
 
         setCountdown(prev => {
@@ -333,34 +406,36 @@ export default function Tabata() {
         }
       }
 
-      // ----------------------------------------------
       // WORK / REST
-      // ----------------------------------------------
 
-      else if (phaseEndRef.current !== null) {
-        let phaseEnd = phaseEndRef.current;
-        let currentPhase = phaseRef.current;
-        let currentRound = roundRef.current;
+      else if (
+        phaseEndRef.current !== null
+      ) {
+        let phaseEnd =
+          phaseEndRef.current;
+
+        let currentPhase =
+          phaseRef.current;
+
+        let currentRound =
+          roundRef.current;
 
         let remainingMs =
           phaseEnd - now;
 
-        // --------------------------------------------
         // REST COUNTDOWN
-        //
-        // Last countdownTime seconds of REST:
-        // 3 -> 2 -> 1
-        // --------------------------------------------
 
         if (
           currentPhase === "rest" &&
           countdownTime > 0 &&
           remainingMs > 0 &&
-          remainingMs <= countdownTime * 1000
+          remainingMs <=
+            countdownTime * 1000
         ) {
-          const restCountdown = Math.ceil(
-            remainingMs / 1000
-          );
+          const restCountdown =
+            Math.ceil(
+              remainingMs / 1000
+            );
 
           setCountdown(prev => {
             if (
@@ -372,22 +447,19 @@ export default function Tabata() {
 
             return restCountdown;
           });
-        } else if (currentPhase === "rest") {
+        } else if (
+          currentPhase === "rest"
+        ) {
           setCountdown(0);
         }
 
-        // --------------------------------------------
         // PHASE TRANSITIONS
-        // --------------------------------------------
 
         while (remainingMs <= 0) {
-          // ------------------------------------------
           // WORK -> REST
-          // ------------------------------------------
 
           if (currentPhase === "work") {
             stopTicking();
-
             playSound("beep");
 
             currentPhase = "rest";
@@ -395,10 +467,14 @@ export default function Tabata() {
             setIsWorking(false);
             setCountdown(0);
 
-            phaseEnd += restTime * 1000;
+            phaseEnd +=
+              restTime * 1000;
 
-            phaseEndRef.current = phaseEnd;
-            phaseRef.current = currentPhase;
+            phaseEndRef.current =
+              phaseEnd;
+
+            phaseRef.current =
+              currentPhase;
 
             remainingMs =
               phaseEnd - now;
@@ -406,11 +482,11 @@ export default function Tabata() {
             continue;
           }
 
-          // ------------------------------------------
           // REST -> NEXT ROUND
-          // ------------------------------------------
 
-          if (currentRound < rounds) {
+          if (
+            currentRound < rounds
+          ) {
             playSound("beep");
 
             setCountdown(0);
@@ -421,11 +497,17 @@ export default function Tabata() {
             setRound(currentRound);
             setIsWorking(true);
 
-            phaseEnd += workTime * 1000;
+            phaseEnd +=
+              workTime * 1000;
 
-            phaseEndRef.current = phaseEnd;
-            phaseRef.current = currentPhase;
-            roundRef.current = currentRound;
+            phaseEndRef.current =
+              phaseEnd;
+
+            phaseRef.current =
+              currentPhase;
+
+            roundRef.current =
+              currentRound;
 
             setSeconds(workTime);
 
@@ -437,9 +519,7 @@ export default function Tabata() {
             continue;
           }
 
-          // ------------------------------------------
           // FINISHED
-          // ------------------------------------------
 
           stopTicking();
 
@@ -464,12 +544,17 @@ export default function Tabata() {
           return;
         }
 
-        const remainingSeconds = Math.max(
-          0,
-          Math.ceil(remainingMs / 1000)
-        );
+        const remainingSeconds =
+          Math.max(
+            0,
+            Math.ceil(
+              remainingMs / 1000
+            )
+          );
 
-        setSeconds(remainingSeconds);
+        setSeconds(
+          remainingSeconds
+        );
       }
 
       animationFrameRef.current =
@@ -493,19 +578,17 @@ export default function Tabata() {
     workTime,
     restTime,
     rounds,
-    countdownTime
+    countdownTime,
+    generalSoundEnabled,
+    timerSoundEnabled
   ]);
 
-  // --------------------------------------------------
   // START / RESUME
-  // --------------------------------------------------
 
   const start = async () => {
     await unlockAudio();
 
-    // ----------------------------------------------
     // START AGAIN AFTER FINISH
-    // ----------------------------------------------
 
     if (finished) {
       stopTicking();
@@ -529,11 +612,14 @@ export default function Tabata() {
           performance.now() +
           countdownTime * 1000;
 
-        setCountdown(countdownTime);
+        setCountdown(
+          countdownTime
+        );
 
         playSound("countdown");
       } else {
-        countdownEndRef.current = null;
+        countdownEndRef.current =
+          null;
 
         phaseEndRef.current =
           performance.now() +
@@ -548,9 +634,7 @@ export default function Tabata() {
       return;
     }
 
-    // ----------------------------------------------
     // FIRST START
-    // ----------------------------------------------
 
     if (!started) {
       stopTicking();
@@ -573,11 +657,14 @@ export default function Tabata() {
           performance.now() +
           countdownTime * 1000;
 
-        setCountdown(countdownTime);
+        setCountdown(
+          countdownTime
+        );
 
         playSound("countdown");
       } else {
-        countdownEndRef.current = null;
+        countdownEndRef.current =
+          null;
 
         phaseEndRef.current =
           performance.now() +
@@ -592,47 +679,53 @@ export default function Tabata() {
       return;
     }
 
-    // ----------------------------------------------
     // RESUME INITIAL COUNTDOWN
-    // ----------------------------------------------
 
-    if (pausedCountdownRef.current !== null) {
+    if (
+      pausedCountdownRef.current !== null
+    ) {
       const remaining =
         pausedCountdownRef.current;
 
       countdownEndRef.current =
-        performance.now() + remaining;
+        performance.now() +
+        remaining;
 
-      pausedCountdownRef.current = null;
+      pausedCountdownRef.current =
+        null;
 
       stopTicking();
-
       setRunning(true);
 
       return;
     }
 
-    // ----------------------------------------------
     // RESUME WORK / REST
-    // ----------------------------------------------
 
-    if (pausedRemainingRef.current !== null) {
+    if (
+      pausedRemainingRef.current !== null
+    ) {
       const remaining =
         pausedRemainingRef.current;
 
       phaseEndRef.current =
-        performance.now() + remaining;
+        performance.now() +
+        remaining;
 
-      pausedRemainingRef.current = null;
+      pausedRemainingRef.current =
+        null;
 
-      if (phaseRef.current === "work") {
+      if (
+        phaseRef.current === "work"
+      ) {
         startTicking();
       } else {
         stopTicking();
 
         if (
           countdownTime > 0 &&
-          remaining <= countdownTime * 1000
+          remaining <=
+            countdownTime * 1000
         ) {
           setCountdown(
             Math.ceil(
@@ -647,15 +740,15 @@ export default function Tabata() {
       return;
     }
 
-    // ----------------------------------------------
     // FALLBACK
-    // ----------------------------------------------
 
     phaseEndRef.current =
       performance.now() +
       seconds * 1000;
 
-    if (phaseRef.current === "work") {
+    if (
+      phaseRef.current === "work"
+    ) {
       startTicking();
     } else {
       stopTicking();
@@ -664,55 +757,55 @@ export default function Tabata() {
     setRunning(true);
   };
 
-  // --------------------------------------------------
   // PAUSE
-  // --------------------------------------------------
 
   const pause = () => {
     if (!running) return;
 
-    const now = performance.now();
+    const now =
+      performance.now();
 
-    // ----------------------------------------------
     // PAUSE INITIAL COUNTDOWN
-    // ----------------------------------------------
 
-    if (countdownEndRef.current !== null) {
-      pausedCountdownRef.current = Math.max(
-        0,
-        countdownEndRef.current - now
-      );
+    if (
+      countdownEndRef.current !== null
+    ) {
+      pausedCountdownRef.current =
+        Math.max(
+          0,
+          countdownEndRef.current -
+            now
+        );
 
-      countdownEndRef.current = null;
+      countdownEndRef.current =
+        null;
 
       stopTicking();
-
       setRunning(false);
 
       return;
     }
 
-    // ----------------------------------------------
     // PAUSE WORK / REST
-    // ----------------------------------------------
 
-    if (phaseEndRef.current !== null) {
-      pausedRemainingRef.current = Math.max(
-        0,
-        phaseEndRef.current - now
-      );
+    if (
+      phaseEndRef.current !== null
+    ) {
+      pausedRemainingRef.current =
+        Math.max(
+          0,
+          phaseEndRef.current -
+            now
+        );
 
       phaseEndRef.current = null;
 
       stopTicking();
-
       setRunning(false);
     }
   };
 
-  // --------------------------------------------------
   // RESET
-  // --------------------------------------------------
 
   const reset = () => {
     if (animationFrameRef.current) {
@@ -764,6 +857,121 @@ export default function Tabata() {
           started={started}
         />
 
+        <div className={styles.audioControls}>
+          <button
+            type="button"
+            className={`${styles.audioButton} ${
+              timerSoundEnabled
+                ? styles.audioActive
+                : styles.audioMuted
+            }`}
+            onClick={toggleTimerSound}
+            aria-label={
+              timerSoundEnabled
+                ? "Mute timer sound"
+                : "Unmute timer sound"
+            }
+          >
+            <span
+              className={styles.audioIcon}
+              aria-hidden="true"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="12"
+                  cy="13"
+                  r="7.5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+                <path
+                  d="M12 13V9"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M12 13L15 15"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M9.5 3.5H14.5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M12 3.5V5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.audioButton} ${
+              generalSoundEnabled
+                ? styles.audioActive
+                : styles.audioMuted
+            }`}
+            onClick={toggleGeneralSound}
+            aria-label={
+              generalSoundEnabled
+                ? "Mute all sound"
+                : "Unmute all sound"
+            }
+          >
+            <span
+              className={styles.audioIcon}
+              aria-hidden="true"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M4 9V15H8L13 19V5L8 9H4Z"
+                  fill="currentColor"
+                />
+
+                {generalSoundEnabled ? (
+                  <>
+                    <path
+                      d="M16 8.5C17.1 9.4 17.8 10.6 17.8 12C17.8 13.4 17.1 14.6 16 15.5"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M18.8 5.8C20.4 7.4 21.3 9.5 21.3 12C21.3 14.5 20.4 16.6 18.8 18.2"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </>
+                ) : (
+                  <path
+                    d="M16 9L21 15M21 9L16 15"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                )}
+              </svg>
+            </span>
+          </button>
+        </div>
+
         {!started && !finished && (
           <Settings
             workTime={workTime}
@@ -771,13 +979,22 @@ export default function Tabata() {
             rounds={rounds}
             countdownTime={countdownTime}
             setWorkTime={value =>
-              updateSetting("workTime", value)
+              updateSetting(
+                "workTime",
+                value
+              )
             }
             setRestTime={value =>
-              updateSetting("restTime", value)
+              updateSetting(
+                "restTime",
+                value
+              )
             }
             setRounds={value =>
-              updateSetting("rounds", value)
+              updateSetting(
+                "rounds",
+                value
+              )
             }
             setCountdownTime={value =>
               updateSetting(

@@ -423,34 +423,28 @@ export default function Tabata() {
         let remainingMs =
           phaseEnd - now;
 
-        // REST COUNTDOWN
 
         if (
-          currentPhase === "rest" &&
-          countdownTime > 0 &&
-          remainingMs > 0 &&
-          remainingMs <=
-            countdownTime * 1000
+        countdownTime > 0 &&
+        remainingMs > 0 &&
+        remainingMs <= countdownTime * 1000
         ) {
-          const restCountdown =
-            Math.ceil(
-              remainingMs / 1000
-            );
+        const phaseCountdown = Math.ceil(
+            remainingMs / 1000
+        );
 
-          setCountdown(prev => {
+        setCountdown(prev => {
             if (
-              restCountdown !== prev &&
-              restCountdown > 0
+            phaseCountdown !== prev &&
+            phaseCountdown > 0
             ) {
-              playSound("countdown");
+            playSound("countdown");
             }
 
-            return restCountdown;
-          });
-        } else if (
-          currentPhase === "rest"
-        ) {
-          setCountdown(0);
+            return phaseCountdown;
+        });
+        } else {
+        setCountdown(0);
         }
 
         // PHASE TRANSITIONS

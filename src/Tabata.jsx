@@ -11,6 +11,12 @@ const defaults = {
   countdownTime: 3
 };
 
+const SOUND_PATHS = {
+  beep: "/tabata/sounds/beep.mp3",
+  countdown: "/tabata/sounds/countdown.mp3",
+  start: "/tabata/sounds/start.mp3"
+};
+
 export default function Tabata() {
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem("tabata-settings");
@@ -44,46 +50,130 @@ export default function Tabata() {
   const [countdown, setCountdown] = useState(0);
 
   // --------------------------------------------------
-  // Audio
+  // AUDIO
   // --------------------------------------------------
 
-  const beepRef = useRef(null);
-  const countdownSoundRef = useRef(null);
-  const startSoundRef = useRef(null);
+  const audioContextRef = useRef(null);
 
+  const soundsRef = useRef({
+    beep: null,
+    countdown: null,
+    start: null
+  });
+
+  const audioLoadingRef = useRef(null);
+
+  /*
+   * Create AudioContext once.
+   *
+   * It may start suspended because of browser autoplay
+   * restrictions. It will be resumed from the Start action.
+   */
   useEffect(() => {
-    beepRef.current = new Audio("/tabata/sounds/beep.mp3");
-    countdownSoundRef.current = new Audio(
-      "/tabata/sounds/countdown.mp3"
-    );
-    startSoundRef.current = new Audio(
-      "/tabata/sounds/start.mp3"
-    );
+    const AudioContext =
+      window.AudioContext ||
+      window.webkitAudioContext;
 
-    beepRef.current.preload = "auto";
-    countdownSoundRef.current.preload = "auto";
-    startSoundRef.current.preload = "auto";
+    if (!AudioContext) {
+      return;
+    }
+
+    audioContextRef.current = new AudioContext();
 
     return () => {
-      beepRef.current?.pause();
-      countdownSoundRef.current?.pause();
-      startSoundRef.current?.pause();
+      audioContextRef.current?.close();
+      audioContextRef.current = null;
     };
   }, []);
 
-  const playSound = audioRef => {
-    const audio = audioRef.current;
+  /*
+   * Load all sounds into memory.
+   *
+   * This happens once when the app loads.
+   */
+  useEffect(() => {
+    const loadSounds = async () => {
+      const context = audioContextRef.current;
 
-    if (!audio) return;
+      if (!context) return;
 
-    audio.pause();
-    audio.currentTime = 0;
+      try {
+        const entries = await Promise.all(
+          Object.entries(SOUND_PATHS).map(
+            async ([name, path]) => {
+              const response = await fetch(path);
 
-    audio.play().catch(() => {});
+              if (!response.ok) {
+                throw new Error(
+                  `Failed to load ${path}`
+                );
+              }
+
+              const arrayBuffer =
+                await response.arrayBuffer();
+
+              const audioBuffer =
+                await context.decodeAudioData(
+                  arrayBuffer
+                );
+
+              return [name, audioBuffer];
+            }
+          )
+        );
+
+        soundsRef.current = Object.fromEntries(entries);
+      } catch {
+        /*
+         * Audio loading failure should never break
+         * the timer itself.
+         */
+      }
+    };
+
+    loadSounds();
+  }, []);
+
+  /*
+   * Resume AudioContext after a user gesture.
+   */
+  const unlockAudio = async () => {
+    const context = audioContextRef.current;
+
+    if (!context) return;
+
+    if (context.state === "suspended") {
+      try {
+        await context.resume();
+      } catch {
+        // Ignore browser audio restrictions.
+      }
+    }
+  };
+
+  /*
+   * Play an already-loaded sound buffer.
+   */
+  const playSound = name => {
+    const context = audioContextRef.current;
+    const buffer = soundsRef.current[name];
+
+    if (!context || !buffer) return;
+
+    try {
+      const source = context.createBufferSource();
+
+      source.buffer = buffer;
+      source.connect(context.destination);
+
+      source.start(0);
+    } catch {
+      // Ignore audio playback errors.
+    }
   };
 
   // --------------------------------------------------
-  // Settings
+  // SETTINGS
   // --------------------------------------------------
 
   useEffect(() => {
@@ -107,7 +197,7 @@ export default function Tabata() {
   };
 
   // --------------------------------------------------
-  // Timer engine
+  // TIMER ENGINE
   // --------------------------------------------------
 
   const animationFrameRef = useRef(null);
@@ -121,31 +211,34 @@ export default function Tabata() {
   const phaseRef = useRef("work");
   const roundRef = useRef(1);
 
+  /*
+   * Prevent duplicate countdown sounds.
+   */
   const lastCountdownValueRef = useRef(null);
 
-  // Keep refs synchronized with React state.
   useEffect(() => {
-    phaseRef.current = isWorking ? "work" : "rest";
+    phaseRef.current = isWorking
+      ? "work"
+      : "rest";
   }, [isWorking]);
 
   useEffect(() => {
     roundRef.current = round;
   }, [round]);
 
-  const getDuration = () => {
-    return phaseRef.current === "work"
-      ? workTime
-      : restTime;
-  };
-
-  // --------------------------------------------------
-  // Main timer loop
-  // --------------------------------------------------
-
+  /*
+   * Main timer loop.
+   *
+   * performance.now() is the actual clock.
+   * requestAnimationFrame only updates the UI.
+   */
   useEffect(() => {
     if (!running) {
       if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+        cancelAnimationFrame(
+          animationFrameRef.current
+        );
+
         animationFrameRef.current = null;
       }
 
@@ -173,7 +266,7 @@ export default function Tabata() {
             remainingSeconds < prev &&
             remainingSeconds > 0
           ) {
-            playSound(countdownSoundRef);
+            playSound("countdown");
           }
 
           return remainingSeconds;
@@ -185,7 +278,6 @@ export default function Tabata() {
 
           setCountdown(0);
 
-          // Start actual WORK immediately.
           phaseRef.current = "work";
           roundRef.current = 1;
 
@@ -193,11 +285,12 @@ export default function Tabata() {
           setRound(1);
 
           phaseEndRef.current =
-            performance.now() + workTime * 1000;
+            performance.now() +
+            workTime * 1000;
 
           pausedRemainingRef.current = null;
 
-          playSound(startSoundRef);
+          playSound("start");
         }
       }
 
@@ -210,16 +303,22 @@ export default function Tabata() {
         let currentPhase = phaseRef.current;
         let currentRound = roundRef.current;
 
-        let remainingMs = phaseEnd - now;
+        let remainingMs =
+          phaseEnd - now;
 
-        // Handle phase transitions.
+        /*
+         * Handle transitions immediately.
+         *
+         * The while-loop is important if the browser
+         * was temporarily suspended or delayed.
+         */
         while (remainingMs <= 0) {
           // ------------------------------------------
           // WORK -> REST
           // ------------------------------------------
 
           if (currentPhase === "work") {
-            playSound(beepRef);
+            playSound("beep");
 
             currentPhase = "rest";
 
@@ -227,10 +326,11 @@ export default function Tabata() {
 
             phaseEnd += restTime * 1000;
 
-            remainingMs = phaseEnd - now;
-
             phaseEndRef.current = phaseEnd;
             phaseRef.current = currentPhase;
+
+            remainingMs =
+              phaseEnd - now;
 
             continue;
           }
@@ -240,7 +340,7 @@ export default function Tabata() {
           // ------------------------------------------
 
           if (currentRound < rounds) {
-            playSound(beepRef);
+            playSound("beep");
 
             currentRound += 1;
             currentPhase = "work";
@@ -250,11 +350,12 @@ export default function Tabata() {
 
             phaseEnd += workTime * 1000;
 
-            remainingMs = phaseEnd - now;
-
             phaseEndRef.current = phaseEnd;
             phaseRef.current = currentPhase;
             roundRef.current = currentRound;
+
+            remainingMs =
+              phaseEnd - now;
 
             continue;
           }
@@ -263,7 +364,7 @@ export default function Tabata() {
           // FINISHED
           // ------------------------------------------
 
-          playSound(beepRef);
+          playSound("beep");
 
           phaseEndRef.current = null;
           pausedRemainingRef.current = null;
@@ -315,10 +416,16 @@ export default function Tabata() {
   ]);
 
   // --------------------------------------------------
-  // Start / Resume
+  // START / RESUME
   // --------------------------------------------------
 
-  const start = () => {
+  const start = async () => {
+    /*
+     * Unlock the Web Audio API using the user's
+     * Start button as the required user gesture.
+     */
+    await unlockAudio();
+
     // ----------------------------------------------
     // START AGAIN AFTER FINISH
     // ----------------------------------------------
@@ -348,7 +455,7 @@ export default function Tabata() {
 
         setCountdown(countdownTime);
 
-        playSound(countdownSoundRef);
+        playSound("countdown");
       } else {
         countdownEndRef.current = null;
 
@@ -358,7 +465,7 @@ export default function Tabata() {
 
         setCountdown(0);
 
-        playSound(startSoundRef);
+        playSound("start");
       }
 
       return;
@@ -392,7 +499,7 @@ export default function Tabata() {
 
         setCountdown(countdownTime);
 
-        playSound(countdownSoundRef);
+        playSound("countdown");
       } else {
         countdownEndRef.current = null;
 
@@ -402,14 +509,14 @@ export default function Tabata() {
 
         setCountdown(0);
 
-        playSound(startSoundRef);
+        playSound("start");
       }
 
       return;
     }
 
     // ----------------------------------------------
-    // RESUME FROM PAUSE
+    // RESUME COUNTDOWN
     // ----------------------------------------------
 
     if (pausedCountdownRef.current !== null) {
@@ -426,6 +533,10 @@ export default function Tabata() {
       return;
     }
 
+    // ----------------------------------------------
+    // RESUME WORK / REST
+    // ----------------------------------------------
+
     if (pausedRemainingRef.current !== null) {
       const remaining =
         pausedRemainingRef.current;
@@ -440,7 +551,10 @@ export default function Tabata() {
       return;
     }
 
-    // Fallback.
+    // ----------------------------------------------
+    // FALLBACK
+    // ----------------------------------------------
+
     phaseEndRef.current =
       performance.now() +
       seconds * 1000;
@@ -449,7 +563,7 @@ export default function Tabata() {
   };
 
   // --------------------------------------------------
-  // Pause
+  // PAUSE
   // --------------------------------------------------
 
   const pause = () => {
@@ -457,7 +571,10 @@ export default function Tabata() {
 
     const now = performance.now();
 
-    // Pause countdown.
+    // ----------------------------------------------
+    // PAUSE COUNTDOWN
+    // ----------------------------------------------
+
     if (countdownEndRef.current !== null) {
       pausedCountdownRef.current = Math.max(
         0,
@@ -471,7 +588,10 @@ export default function Tabata() {
       return;
     }
 
-    // Pause work/rest.
+    // ----------------------------------------------
+    // PAUSE WORK / REST
+    // ----------------------------------------------
+
     if (phaseEndRef.current !== null) {
       pausedRemainingRef.current = Math.max(
         0,
@@ -485,7 +605,7 @@ export default function Tabata() {
   };
 
   // --------------------------------------------------
-  // Reset
+  // RESET
   // --------------------------------------------------
 
   const reset = () => {
@@ -519,7 +639,7 @@ export default function Tabata() {
   };
 
   // --------------------------------------------------
-  // Render
+  // RENDER
   // --------------------------------------------------
 
   return (

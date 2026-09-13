@@ -48,6 +48,9 @@ export default function Tabata() {
   const countdownSoundRef = useRef(null);
   const startSoundRef = useRef(null);
 
+  const timerStartRef = useRef(null);
+  const countdownStartRef = useRef(null);
+
   // Create audio objects once
   useEffect(() => {
     beepRef.current = new Audio("/tabata/sounds/beep.mp3");
@@ -89,37 +92,59 @@ export default function Tabata() {
     audio.play().catch(() => {});
   };
 
-  // Countdown
+  /*
+   * Countdown
+   *
+   * Uses Date.now() instead of assuming that every
+   * setInterval tick is exactly one second.
+   */
   useEffect(() => {
     if (!running || countdown <= 0) return;
 
+    if (!countdownStartRef.current) {
+      countdownStartRef.current =
+        Date.now() - (countdownTime - countdown) * 1000;
+    }
+
     const interval = setInterval(() => {
+      const elapsed = Date.now() - countdownStartRef.current;
+      const remaining = Math.max(
+        0,
+        countdownTime - Math.floor(elapsed / 1000)
+      );
+
       setCountdown(prev => {
-        if (prev <= 1) {
-          return 0;
+        if (remaining < prev && remaining > 0) {
+          playSound(countdownSoundRef);
         }
 
-        const next = prev - 1;
-
-        playSound(countdownSoundRef);
-
-        return next;
+        return remaining;
       });
-    }, 1000);
+
+      if (remaining <= 0) {
+        clearInterval(interval);
+        countdownStartRef.current = null;
+      }
+    }, 50);
 
     return () => clearInterval(interval);
-  }, [running, countdown]);
+  }, [running, countdownTime]);
 
-  // Start sound when countdown finishes
+  /*
+   * Start sound when countdown finishes.
+   */
   useEffect(() => {
     if (
       running &&
       started &&
       countdown === 0 &&
       seconds === workTime &&
-      isWorking
+      isWorking &&
+      !timerStartRef.current
     ) {
       playSound(startSoundRef);
+
+      timerStartRef.current = Date.now();
     }
   }, [
     countdown,
@@ -130,39 +155,62 @@ export default function Tabata() {
     isWorking
   ]);
 
-  // Main timer
+  /*
+   * Main timer
+   *
+   * Date.now() is the actual clock.
+   * setInterval only updates the UI frequently.
+   */
   useEffect(() => {
     if (!running || countdown > 0) return;
 
+    if (!timerStartRef.current) {
+      timerStartRef.current =
+        Date.now() - (getCurrentDuration() - seconds) * 1000;
+    }
+
     const interval = setInterval(() => {
-      setSeconds(prev => {
-        if (prev > 1) {
-          return prev - 1;
-        }
+      const duration = getCurrentDuration();
+
+      const elapsed =
+        (Date.now() - timerStartRef.current) / 1000;
+
+      const remaining = Math.max(
+        0,
+        duration - Math.floor(elapsed)
+      );
+
+      setSeconds(remaining);
+
+      if (remaining <= 0) {
+        clearInterval(interval);
 
         playSound(beepRef);
 
         // WORK -> REST
         if (isWorking) {
           setIsWorking(false);
-          return restTime;
+          setSeconds(restTime);
+          timerStartRef.current = Date.now();
+          return;
         }
 
         // REST -> NEXT ROUND
         if (round < rounds) {
           setRound(prev => prev + 1);
           setIsWorking(true);
-
-          return workTime;
+          setSeconds(workTime);
+          timerStartRef.current = Date.now();
+          return;
         }
 
         // FINISHED
         setRunning(false);
         setFinished(true);
-
-        return 0;
-      });
-    }, 1000);
+        setSeconds(0);
+        timerStartRef.current = null;
+      }
+    }, 50);
 
     return () => clearInterval(interval);
   }, [
@@ -172,8 +220,13 @@ export default function Tabata() {
     round,
     rounds,
     workTime,
-    restTime
+    restTime,
+    seconds
   ]);
+
+  const getCurrentDuration = () => {
+    return isWorking ? workTime : restTime;
+  };
 
   const updateSetting = (key, value) => {
     setSettings(prev => ({
@@ -192,12 +245,16 @@ export default function Tabata() {
       setStarted(true);
       setRunning(true);
 
+      timerStartRef.current = null;
+
       if (countdownTime > 0) {
         setCountdown(countdownTime);
+        countdownStartRef.current = Date.now();
         playSound(countdownSoundRef);
       } else {
         setCountdown(0);
         playSound(startSoundRef);
+        timerStartRef.current = Date.now();
       }
 
       return;
@@ -208,12 +265,16 @@ export default function Tabata() {
       setStarted(true);
       setRunning(true);
 
+      timerStartRef.current = null;
+
       if (countdownTime > 0) {
         setCountdown(countdownTime);
+        countdownStartRef.current = Date.now();
         playSound(countdownSoundRef);
       } else {
         setCountdown(0);
         playSound(startSoundRef);
+        timerStartRef.current = Date.now();
       }
 
       return;
@@ -221,10 +282,21 @@ export default function Tabata() {
 
     // Resume
     setRunning(true);
+
+    timerStartRef.current =
+      Date.now() -
+      (getCurrentDuration() - seconds) * 1000;
   };
 
   const pause = () => {
     setRunning(false);
+
+    /*
+     * Clear timing references so resume starts
+     * from the exact displayed second.
+     */
+    timerStartRef.current = null;
+    countdownStartRef.current = null;
   };
 
   const reset = () => {
@@ -236,6 +308,9 @@ export default function Tabata() {
     setRound(1);
     setSeconds(workTime);
     setIsWorking(true);
+
+    timerStartRef.current = null;
+    countdownStartRef.current = null;
   };
 
   return (

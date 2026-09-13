@@ -16,7 +16,10 @@ export default function Timer({
 
   const progress =
     total > 0
-      ? Math.min(1, Math.max(0, (total - seconds) / total))
+      ? Math.min(
+          1,
+          Math.max(0, (total - seconds) / total)
+        )
       : 0;
 
   const circumference = 2 * Math.PI * 130;
@@ -27,6 +30,14 @@ export default function Timer({
     !running &&
     !finished &&
     countdown === 0;
+
+  const status = finished
+    ? "FINISHED"
+    : isPaused
+      ? "PAUSED"
+      : isWorking
+        ? "WORK"
+        : "REST";
 
   return (
     <section
@@ -40,84 +51,79 @@ export default function Timer({
               : styles.rest
       }`}
     >
-      <svg
-        className={styles.progress}
-        viewBox="0 0 280 280"
-      >
-        <circle
-          className={styles.track}
-          cx="140"
-          cy="140"
-          r="130"
-        />
+      <div className={styles.timerContent}>
 
-        <circle
-          className={styles.bar}
-          cx="140"
-          cy="140"
-          r="130"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-        />
-      </svg>
-
-      <div className={styles.content}>
-        {countdown > 0 ? (
-          <>
+        {/* STATUS CONTAINER */}
+        <div className={styles.statusContainer}>
+          {countdown > 0 ? (
             <span className={styles.status}>
               GET READY
             </span>
-
-            <strong
-              key={countdown}
-              className={styles.countdown}
-            >
-              {countdown}
-            </strong>
-          </>
-        ) : finished ? (
-          <>
-            <span className={styles.check}>
-              ✓
-            </span>
-
+          ) : (
             <span className={styles.status}>
-              FINISHED
+              {status}
             </span>
+          )}
+        </div>
 
-            <strong>
+        {/* CIRCLE CONTAINER */}
+        <div className={styles.circleContainer}>
+          <div className={styles.circle}>
+            <svg
+              className={styles.progress}
+              viewBox="0 0 280 280"
+            >
+              <circle
+                className={styles.track}
+                cx="140"
+                cy="140"
+                r="130"
+              />
+
+              <circle
+                className={styles.bar}
+                cx="140"
+                cy="140"
+                r="130"
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+              />
+            </svg>
+
+            {countdown > 0 ? (
+              <strong
+                key={countdown}
+                className={styles.countdown}
+              >
+                {countdown}
+              </strong>
+            ) : finished ? (
+              <span className={styles.check}>
+                ✓
+              </span>
+            ) : (
+              <strong className={styles.time}>
+                {String(seconds).padStart(2, "0")}
+              </strong>
+            )}
+          </div>
+        </div>
+
+        {/* BOTTOM CONTAINER */}
+        <div className={styles.bottomContainer}>
+          {countdown > 0 ? null : finished ? (
+            <strong className={styles.finishedText}>
               Great job!
             </strong>
-          </>
-        ) : isPaused ? (
-          <>
-            <span className={styles.status}>
-              PAUSED
-            </span>
-
-            <strong className={styles.time}>
-              {String(seconds).padStart(2, "0")}
-            </strong>
-
+          ) : (
             <span className={styles.round}>
-              {round} <small>/</small> {rounds}
+              {round}
+              <small>/</small>
+              {rounds}
             </span>
-          </>
-        ) : (
-          <>
-            <span className={styles.status}>
-              {isWorking ? "WORK" : "REST"}
-            </span>
+          )}
+        </div>
 
-            <strong className={styles.time}>
-              {String(seconds).padStart(2, "0")}
-            </strong>
-
-            <span className={styles.round}>
-              {round} <small>/</small> {rounds}
-            </span>
-          </>
-        )}
       </div>
     </section>
   );

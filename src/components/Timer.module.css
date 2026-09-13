@@ -1,10 +1,13 @@
 .timer {
   position: relative;
-  display: grid;
-  place-items: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
   flex: 1;
   min-height: 0;
   width: 100%;
+
   color: white;
   overflow: visible;
 }
@@ -21,11 +24,107 @@
   background: #222;
 }
 
+.paused {
+  background: #777;
+}
+
+/* -------------------------------------------------- */
+/* MAIN TIMER LAYOUT */
+/* -------------------------------------------------- */
+
+.timerContent {
+  display: grid;
+
+  grid-template-rows:
+    100px
+    minmax(0, 1fr)
+    70px;
+
+  align-items: center;
+  justify-items: center;
+
+  width: 100%;
+  height: 100%;
+}
+
+/* -------------------------------------------------- */
+/* STATUS */
+/* -------------------------------------------------- */
+
+.statusContainer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+
+  width: 100%;
+  height: 100%;
+
+  padding-top: 18px;
+
+  box-sizing: border-box;
+
+  overflow: visible;
+}
+
+.status {
+  margin: 0;
+
+  font-size: clamp(18px, 5vw, 28px);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+
+  line-height: 1;
+  white-space: nowrap;
+
+  opacity: 0.8;
+}
+
+/* -------------------------------------------------- */
+/* CIRCLE CONTAINER */
+/* -------------------------------------------------- */
+
+.circleContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  height: 100%;
+
+  min-height: 0;
+  min-width: 0;
+
+  overflow: visible;
+}
+
+/* -------------------------------------------------- */
+/* CIRCLE */
+/* -------------------------------------------------- */
+
+.circle {
+  position: relative;
+
+  width: min(80vw, 70vh, 520px);
+  max-width: 100%;
+  aspect-ratio: 1;
+
+  flex-shrink: 1;
+}
+
+/* -------------------------------------------------- */
+/* SVG PROGRESS */
+/* -------------------------------------------------- */
+
 .progress {
   position: absolute;
-  width: min(80vw, 70vh, 520px);
-  height: min(80vw, 70vh, 520px);
+
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+
   transform: rotate(-90deg);
+
   overflow: visible;
 }
 
@@ -42,74 +141,214 @@
 .bar {
   stroke: rgba(255, 255, 255, 0.9);
   stroke-linecap: round;
-  /* transition: stroke-dashoffset 1s linear; */
 }
 
-.content {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+/* -------------------------------------------------- */
+/* TIMER NUMBER */
+/* -------------------------------------------------- */
+
+.time,
+.countdown,
+.check {
+  position: absolute;
+
+  top: 50%;
+  left: 50%;
+
+  transform: translate(-50%, -50%);
+
+  margin: 0;
 }
 
-.status {
-  font-size: clamp(12px, 3vw, 16px);
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  opacity: 0.7;
-}
+/* -------------------------------------------------- */
+/* NORMAL TIMER */
+/* -------------------------------------------------- */
 
 .time {
-  margin: 8px 0;
-  font-size: clamp(80px, 24vw, 180px);
-  line-height: 0.9;
+  font-size: clamp(90px, 30vw, 220px);
+
+  line-height: 1;
+
   font-weight: 800;
+
   letter-spacing: -0.08em;
+
   font-variant-numeric: tabular-nums;
 }
 
-.round {
-  font-size: clamp(16px, 4vw, 22px);
-  font-weight: 700;
-  opacity: 0.8;
-}
-
-.round small {
-  margin: 0 4px;
-  opacity: 0.5;
-}
+/* -------------------------------------------------- */
+/* COUNTDOWN */
+/* -------------------------------------------------- */
 
 .countdown {
-  margin-top: 10px;
-  font-size: clamp(100px, 30vw, 220px);
-  line-height: 0.9;
+  font-size: clamp(100px, 32vw, 240px);
+
+  line-height: 1;
+
   font-weight: 800;
+
   letter-spacing: -0.08em;
+
   font-variant-numeric: tabular-nums;
+
   animation: countdown 0.8s ease;
 }
 
+/* -------------------------------------------------- */
+/* FINISHED CHECK */
+/* -------------------------------------------------- */
+
 .check {
-  margin-bottom: 15px;
-  font-size: 70px;
+  font-size: clamp(60px, 18vw, 100px);
+
   line-height: 1;
+
+  font-weight: 800;
 }
 
-.paused {
-  background: #777;
+/* -------------------------------------------------- */
+/* BOTTOM CONTAINER */
+/* -------------------------------------------------- */
+
+.bottomContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  height: 70px;
+
+  overflow: visible;
 }
+
+/* -------------------------------------------------- */
+/* ROUND */
+/* -------------------------------------------------- */
+
+.round {
+  margin: 0;
+
+  font-size: clamp(20px, 5vw, 28px);
+
+  line-height: 1;
+
+  font-weight: 700;
+
+  white-space: nowrap;
+
+  opacity: 0.85;
+}
+
+.round small {
+  margin: 0 5px;
+
+  opacity: 0.5;
+}
+
+/* -------------------------------------------------- */
+/* FINISHED TEXT */
+/* -------------------------------------------------- */
+
+.finishedText {
+  margin: 0;
+
+  font-size: clamp(22px, 5vw, 30px);
+
+  line-height: 1;
+
+  font-weight: 800;
+
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------- */
+/* COUNTDOWN ANIMATION */
+/* -------------------------------------------------- */
 
 @keyframes countdown {
   0% {
-    transform: scale(1.3);
+    transform:
+      translate(-50%, -50%)
+      scale(1.3);
+
     opacity: 0;
   }
 
   100% {
-    transform: scale(1);
+    transform:
+      translate(-50%, -50%)
+      scale(1);
+
     opacity: 1;
+  }
+}
+
+/* -------------------------------------------------- */
+/* MOBILE */
+/* -------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .timerContent {
+    grid-template-rows:
+      90px
+      minmax(0, 1fr)
+      60px;
+  }
+
+  .statusContainer {
+    padding-top: 14px;
+  }
+
+  .status {
+    font-size: clamp(16px, 5vw, 24px);
+  }
+
+  .circle {
+    width: min(78vw, 52vh);
+  }
+
+  .time {
+    font-size: clamp(80px, 27vw, 180px);
+  }
+
+  .countdown {
+    font-size: clamp(90px, 30vw, 200px);
+  }
+
+  .round {
+    font-size: clamp(18px, 5vw, 24px);
+  }
+
+  .finishedText {
+    font-size: clamp(20px, 5vw, 28px);
+  }
+}
+
+/* -------------------------------------------------- */
+/* VERY SMALL PHONES */
+/* -------------------------------------------------- */
+
+@media (max-height: 650px) {
+  .timerContent {
+    grid-template-rows:
+      70px
+      minmax(0, 1fr)
+      50px;
+  }
+
+  .statusContainer {
+    padding-top: 10px;
+  }
+
+  .circle {
+    width: min(72vw, 50vh);
+  }
+
+  .status {
+    font-size: 16px;
+  }
+
+  .round {
+    font-size: 18px;
   }
 }

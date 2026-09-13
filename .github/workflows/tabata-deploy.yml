@@ -10,13 +10,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build React app
         run: npm run build
+
+      - name: Prepare deployment archive
+        run: |
+          tar -czf tabata-build.tar.gz -C dist .
 
       - name: Remove old build
         uses: appleboy/ssh-action@v1.0.3
@@ -25,23 +29,27 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            rm -rf /var/www/portfolio/tabata/dist/*
+            rm -rf /var/www/portfolio/tabata/dist
+            mkdir -p /var/www/portfolio/tabata/dist
 
-      - name: Copy build to VPS
+      - name: Upload build archive
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: "dist/*"
-          target: "/var/www/portfolio/tabata/dist"
+          source: "tabata-build.tar.gz"
+          target: "/var/www/portfolio/tabata"
 
-      - name: Reload Nginx
+      - name: Extract build
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            sudo nginx -t
-            sudo systemctl reload nginx
+            tar -xzf /var/www/portfolio/tabata/tabata-build.tar.gz -C /var/www/portfolio/tabata/dist
+            rm /var/www/portfolio/tabata/tabata-build.tar.gz
+
+            nginx -t
+            systemctl reload nginx

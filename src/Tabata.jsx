@@ -45,8 +45,83 @@ export default function Tabata() {
   const [countdown, setCountdown] = useState(0);
 
   const beepRef = useRef(null);
+  const countdownSoundRef = useRef(null);
+  const startSoundRef = useRef(null);
 
-  // Save settings
+  // --------------------------------------------------
+  // AUDIO DEBUG
+  // --------------------------------------------------
+
+  useEffect(() => {
+    const sounds = [
+      {
+        name: "BEEP",
+        ref: beepRef
+      },
+      {
+        name: "COUNTDOWN",
+        ref: countdownSoundRef
+      },
+      {
+        name: "START",
+        ref: startSoundRef
+      }
+    ];
+
+    console.log("🔊 Checking audio files...");
+
+    sounds.forEach(({ name, ref }) => {
+      const audio = ref.current;
+
+      if (!audio) {
+        console.error(`❌ ${name}: audio element not found`);
+        return;
+      }
+
+      console.log(`🔊 ${name}:`);
+      console.log("   URL:", audio.currentSrc);
+      console.log("   readyState:", audio.readyState);
+      console.log("   networkState:", audio.networkState);
+
+      audio.addEventListener("loadeddata", () => {
+        console.log(`✅ ${name} loaded`);
+        console.log(`   Duration: ${audio.duration}s`);
+      });
+
+      audio.addEventListener("canplaythrough", () => {
+        console.log(`✅ ${name} can play`);
+      });
+
+      audio.addEventListener("play", () => {
+        console.log(`▶️ ${name} PLAY`);
+      });
+
+      audio.addEventListener("ended", () => {
+        console.log(`⏹️ ${name} ENDED`);
+      });
+
+      audio.addEventListener("error", () => {
+        console.error(`❌ ${name} ERROR`);
+        console.error(audio.error);
+        console.error("URL:", audio.currentSrc);
+      });
+    });
+
+    return () => {
+      sounds.forEach(({ ref }) => {
+        const audio = ref.current;
+
+        if (audio) {
+          audio.pause();
+        }
+      });
+    };
+  }, []);
+
+  // --------------------------------------------------
+  // SAVE SETTINGS
+  // --------------------------------------------------
+
   useEffect(() => {
     localStorage.setItem(
       "tabata-settings",
@@ -54,16 +129,43 @@ export default function Tabata() {
     );
   }, [settings]);
 
-  // Update initial work time
+  // --------------------------------------------------
+  // UPDATE INITIAL WORK TIME
+  // --------------------------------------------------
+
   useEffect(() => {
     if (!started && !finished) {
       setSeconds(workTime);
     }
   }, [workTime, started, finished]);
 
-  // Countdown
+  // --------------------------------------------------
+  // COUNTDOWN
+  // --------------------------------------------------
+
   useEffect(() => {
     if (!running || countdown <= 0) return;
+
+    console.log(`⏱️ Countdown: ${countdown}`);
+
+    const audio = countdownSoundRef.current;
+
+    if (audio) {
+      audio.currentTime = 0;
+
+      audio.play()
+        .then(() => {
+          console.log(
+            `🔊 Countdown sound played: ${countdown}`
+          );
+        })
+        .catch(error => {
+          console.error(
+            `❌ Countdown sound failed:`,
+            error
+          );
+        });
+    }
 
     const interval = setInterval(() => {
       setCountdown(prev => {
@@ -78,7 +180,50 @@ export default function Tabata() {
     return () => clearInterval(interval);
   }, [running, countdown]);
 
-  // Main timer
+  // --------------------------------------------------
+  // START SOUND
+  // --------------------------------------------------
+
+  useEffect(() => {
+    if (
+      running &&
+      started &&
+      countdown === 0 &&
+      seconds === workTime &&
+      isWorking
+    ) {
+      console.log("🚀 Starting WORK");
+
+      const audio = startSoundRef.current;
+
+      if (audio) {
+        audio.currentTime = 0;
+
+        audio.play()
+          .then(() => {
+            console.log("🔊 Start sound played");
+          })
+          .catch(error => {
+            console.error(
+              "❌ Start sound failed:",
+              error
+            );
+          });
+      }
+    }
+  }, [
+    countdown,
+    running,
+    started,
+    seconds,
+    workTime,
+    isWorking
+  ]);
+
+  // --------------------------------------------------
+  // MAIN TIMER
+  // --------------------------------------------------
+
   useEffect(() => {
     if (!running || countdown > 0) return;
 
@@ -88,22 +233,48 @@ export default function Tabata() {
           return prev - 1;
         }
 
-        beepRef.current?.play().catch(() => {});
+        console.log("🔔 Interval finished");
+
+        const audio = beepRef.current;
+
+        if (audio) {
+          audio.currentTime = 0;
+
+          audio.play()
+            .then(() => {
+              console.log("🔊 Beep played");
+            })
+            .catch(error => {
+              console.error(
+                "❌ Beep failed:",
+                error
+              );
+            });
+        }
 
         // WORK -> REST
         if (isWorking) {
+          console.log("💤 WORK → REST");
+
           setIsWorking(false);
           return restTime;
         }
 
         // REST -> NEXT ROUND
         if (round < rounds) {
+          console.log(
+            `💪 REST → WORK, round ${round + 1}`
+          );
+
           setRound(prev => prev + 1);
           setIsWorking(true);
+
           return workTime;
         }
 
         // FINISHED
+        console.log("🏁 TABATA FINISHED");
+
         setRunning(false);
         setFinished(true);
 
@@ -122,6 +293,10 @@ export default function Tabata() {
     restTime
   ]);
 
+  // --------------------------------------------------
+  // SETTINGS
+  // --------------------------------------------------
+
   const updateSetting = (key, value) => {
     setSettings(prev => ({
       ...prev,
@@ -129,7 +304,13 @@ export default function Tabata() {
     }));
   };
 
+  // --------------------------------------------------
+  // START
+  // --------------------------------------------------
+
   const start = () => {
+    console.log("▶️ START button");
+
     // Start a completely new session
     if (finished) {
       setRound(1);
@@ -157,16 +338,28 @@ export default function Tabata() {
     }
 
     // Resume
+    console.log("▶️ RESUME");
+
     setRunning(true);
   };
 
+  // --------------------------------------------------
+  // PAUSE
+  // --------------------------------------------------
+
   const pause = () => {
-    // NOTHING gets reset.
-    // Everything stays exactly where it is.
+    console.log("⏸️ PAUSE");
+
     setRunning(false);
   };
 
+  // --------------------------------------------------
+  // RESET
+  // --------------------------------------------------
+
   const reset = () => {
+    console.log("🔄 RESET");
+
     setRunning(false);
     setStarted(false);
     setFinished(false);
@@ -177,11 +370,29 @@ export default function Tabata() {
     setIsWorking(true);
   };
 
+  // --------------------------------------------------
+  // RENDER
+  // --------------------------------------------------
+
   return (
     <main className={styles.container}>
+      {/* Sounds */}
+
       <audio
         ref={beepRef}
-        src="/beep.mp3"
+        src="/tabata/sounds/beep.mp3"
+        preload="auto"
+      />
+
+      <audio
+        ref={countdownSoundRef}
+        src="/tabata/sounds/countdown.mp3"
+        preload="auto"
+      />
+
+      <audio
+        ref={startSoundRef}
+        src="/tabata/sounds/start.mp3"
         preload="auto"
       />
 
@@ -192,15 +403,15 @@ export default function Tabata() {
 
       <div className={styles.app}>
         <Timer
-        seconds={seconds}
-        round={round}
-        rounds={rounds}
-        workTime={workTime}
-        restTime={restTime}
-        isWorking={isWorking}
-        finished={finished}
-        countdown={countdown}
-        running={running}
+          seconds={seconds}
+          round={round}
+          rounds={rounds}
+          workTime={workTime}
+          restTime={restTime}
+          isWorking={isWorking}
+          finished={finished}
+          countdown={countdown}
+          running={running}
         />
 
         {!started && !finished && (

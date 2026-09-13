@@ -18,6 +18,15 @@ jobs:
       - name: Build React app
         run: npm run build
 
+      - name: Remove old build
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            rm -rf /var/www/portfolio/tabata/dist/*
+
       - name: Copy build to VPS
         uses: appleboy/scp-action@v0.1.4
         with:
@@ -28,7 +37,7 @@ jobs:
           target: "/var/www/portfolio/tabata/dist"
 
       - name: Reload Nginx
-        uses: appleboy/ssh-action@v0.1.7
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
